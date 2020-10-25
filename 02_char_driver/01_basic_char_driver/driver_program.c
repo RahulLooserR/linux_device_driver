@@ -2,7 +2,7 @@
  * Created by    : Rahul Kumar Nonia
  * File name     : driver_program.c
  * Created on    : Sunday 25 October 2020 11:35:41 AM IST
- * Last modified : Sunday 25 October 2020 05:53:55 PM IST
+ * Last modified : Sunday 25 October 2020 06:37:55 PM IST
  * Description   : 
  * ***********************************************************************/
 
@@ -53,6 +53,7 @@ int main()
 
 			case 3:
 				exit(0);
+				close(fd);
 				break;
 
 			default:

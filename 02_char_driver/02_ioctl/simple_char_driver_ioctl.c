@@ -2,7 +2,7 @@
  * Created by    : Rahul Kumar Nonia
  * File name     : simple_char_driver.c
  * Created on    : Saturday 24 October 2020 10:15:14 PM IST
- * Last modified : Sunday 25 October 2020 05:08:03 PM IST
+ * Last modified : Sunday 25 October 2020 06:55:41 PM IST
  * Description   : 
  * ***********************************************************************/
 
@@ -15,10 +15,16 @@
 #include <linux/uaccess.h>
 #include <linux/kdev_t.h>
 #include <linux/fs.h>
+#include <linux/ioctl.h>
 
 #define SIZE 256
 #define DEVICE_NAME "my_char_device"
 #define DEVICE_CLASS "my_char_device_class"
+
+/* define  ioctl code */
+#define WR_DATA _IOW('a','a',int32_t*)
+#define RD_DATA _IOR('a','b',int32_t*)
+int32_t val = 0;
 
 static dev_t dev_num = 0; /* used for major/minor number */
 static struct class *dev_class;
@@ -32,11 +38,13 @@ static int __init chr_dev_init(void);
 /* Exit point */
 static void __exit chr_dev_exit(void);
 
+
 /* file operations protoytpe */
 static int my_open(struct inode *inode, struct file *file);
 static int my_release(struct inode *inode, struct file *file);
 static ssize_t my_read(struct file *fileptr, char __user *buf, size_t len, loff_t *off);
 static ssize_t my_write(struct file *fileptr, const char __user *buf, size_t len, loff_t *off);
+static long my_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
 
 static struct file_operations fops = 
 {
@@ -44,6 +52,7 @@ static struct file_operations fops =
 	.read			= my_read,
 	.open			= my_open,
 	.write			= my_write,
+	.unlocked_ioctl = my_ioctl,
 	.release		= my_release,
 };
 
@@ -77,6 +86,25 @@ static ssize_t my_write(struct file *fileptr, const char __user *buf, size_t len
 	copy_from_user(kernel_buf, buf, len);
 	pr_info("Data written successfully\n");
 	return len;
+}
+
+static long my_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
+{
+	switch(cmd){
+		case RD_DATA:
+			copy_from_user(&val, (int32_t*)arg, sizeof(val));
+			pr_info("data copied/received from user: %d\n", val);
+			break;
+
+		case WR_DATA:
+			copy_to_user((int32_t*)arg, &val, sizeof(val));
+			pr_info("Data sent to user: %d\n", val);
+			break;
+
+		default:
+			break;
+	}
+	return 0;
 }
 
 static int __init chr_dev_init(void)
