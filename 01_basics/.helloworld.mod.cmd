@@ -1,0 +1,1 @@
+cmd_/home/looser/device_driver/linux_device_driver/01_basics/helloworld.mod := { echo  /home/looser/device_driver/linux_device_driver/01_basics/helloworld.o; echo; } > /home/looser/device_driver/linux_device_driver/01_basics/helloworld.mod
