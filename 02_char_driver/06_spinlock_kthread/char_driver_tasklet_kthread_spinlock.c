@@ -2,7 +2,7 @@
  * Created by    : Rahul Kumar Nonia
  * File name     : simple_char_driver.c
  * Created on    : Saturday 24 October 2020 10:15:14 PM IST
- * Last modified : Monday 26 October 2020 08:20:02 PM IST
+ * Last modified : Tuesday 27 October 2020 01:19:03 PM IST
  * Description   : 
  * ***********************************************************************/
 
@@ -18,6 +18,8 @@
 #include <linux/ioctl.h>
 #include <linux/proc_fs.h>
 #include <linux/interrupt.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
 
 /*
 #include <asm/irq.h>
@@ -35,8 +37,17 @@
 /* define  ioctl code */
 #define WR_DATA _IOW('a','a',int32_t*)
 #define RD_DATA _IOR('a','b',int32_t*)
-int32_t val = 0;
+static int32_t val = 0;
 
+static int global_spinlock = 0;
+
+/* kthread */
+static struct task_struct *kthread1;
+static struct task_struct *kthread2;
+static int kthread1_func(void *);
+static int kthread2_func(void *);
+// static struct spinlock_t *my_spinlock;
+DEFINE_SPINLOCK(my_spinlock);
 
 /* tasklet prototype */
 static void tasklet_func(unsigned long data);
@@ -52,14 +63,18 @@ static struct tasklet_struct *tasklet;
 
 static void tasklet_func(unsigned long data)
 {
-	pr_info("Executing bottom half tasklets: %ld\n", data);
+	spin_lock_irq(&my_spinlock);
+	pr_info("locked irq inside tasklet\n");
+	spin_unlock(&my_spinlock);
 }
 
 /* interrupt handler function */
 static irqreturn_t irq_handler(int irq, void *dev_id)
-{
+{   
 	pr_info("interrupt occurred\n");
-
+	spin_lock_irq(&my_spinlock);
+	pr_info("locked irq inside isr\n");
+	spin_unlock(&my_spinlock);
 	/* schedule bottom half tasklets */
 	//tasklet_schedule(&tasklet);    // required for dynamic method
 	tasklet_schedule(tasklet);
@@ -198,6 +213,36 @@ static ssize_t proc_write (struct file *file, const char __user *buf, size_t len
 	return length;
 }
 
+static int kthread1_func(void *p)
+{
+	/* int i = 0; */
+	while(!kthread_should_stop()){
+		if(!spin_is_locked(&my_spinlock)){
+			spin_lock(&my_spinlock);
+			global_spinlock++;
+			pr_info("variable not locked in thread1 changing value %d: \n", global_spinlock);
+			spin_unlock(&my_spinlock);
+		}
+		msleep(1000);
+	}
+	return 0;
+}
+
+static int kthread2_func(void *p)
+{
+	/* int i = 0; */
+	while(!kthread_should_stop()){
+		if(!spin_is_locked(&my_spinlock)){
+			spin_lock(&my_spinlock);
+			global_spinlock++;
+			pr_info("variable not locked in thread2 changing value %d: \n", global_spinlock);
+			spin_unlock(&my_spinlock);
+		}
+		msleep(1000);
+	}
+	return 0;
+}
+
 static int __init chr_dev_init(void)
 {
 	/* allocating statically major number 
@@ -258,6 +303,31 @@ static int __init chr_dev_init(void)
 	}
 	tasklet_init(tasklet, tasklet_func, 29);
 
+	/*
+	 creating and running kthread separately 
+	 */
+	kthread1 = kthread_create(kthread1_func, NULL, "kthread1");
+	if(kthread1){
+		wake_up_process(kthread1);
+		pr_info("thread1 created\n");
+	}
+	else{
+		pr_info("unable to create thread1\n");
+		goto r_device;
+	}
+	
+	/* create and start thread immediately */
+	kthread2 = kthread_run(kthread2_func, NULL, "kthread2");
+	if(kthread2){
+		pr_info("thread 2 created\n");
+	}
+	else{
+		pr_info("error creating thread2\n");
+		goto r_device;
+	}
+	
+
+
 	return 0;
 
 	/* goto fallback */
@@ -275,7 +345,8 @@ r_device:
 
 static void __exit chr_dev_exit(void)
 {
-	tasklet_kill(tasklet);
+	kthread_stop(kthread1);
+	kthread_stop(kthread2);
 	free_irq(IRQ_NO, (void*)(irq_handler));
 	device_destroy(dev_class, dev_num);
 	class_destroy(dev_class);
